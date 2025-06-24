@@ -1,0 +1,385 @@
+
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Camera, Edit, Settings, Heart, MessageCircle, BarChart3, Trophy, Users, Star } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import BottomNavigation from '@/components/BottomNavigation';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+interface UserPost {
+  id: string;
+  content: string;
+  sport?: string;
+  match_teams?: string;
+  prediction_text?: string;
+  odds: number;
+  confidence: number;
+  likes: number;
+  comments: number;
+  created_at: string;
+  image_url?: string;
+}
+
+const Profile = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [profile, setProfile] = useState({
+    username: '',
+    display_name: '',
+    avatar_url: '',
+    bio: '',
+    badge: '',
+    followers_count: 0,
+    following_count: 0
+  });
+  const [userPosts, setUserPosts] = useState<UserPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newBio, setNewBio] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+      fetchUserPosts();
+    }
+  }, [user]);
+
+  const fetchProfile = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user?.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+      } else if (data) {
+        setProfile({
+          username: data.username || '',
+          display_name: data.display_name || '',
+          avatar_url: data.avatar_url || '',
+          bio: data.bio || '',
+          badge: data.badge || '',
+          followers_count: data.followers_count || 0,
+          following_count: data.following_count || 0
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUserPosts = async () => {
+    if (!user) return;
+    
+    setPostsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching user posts:', error);
+      } else {
+        setUserPosts(data || []);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  const updateProfile = async () => {
+    if (!newDisplayName.trim()) {
+      toast.error('Le nom d\'affichage ne peut pas être vide');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          display_name: newDisplayName.trim(),
+          bio: newBio.trim()
+        })
+        .eq('id', user?.id);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        toast.error('Erreur lors de la mise à jour du profil');
+      } else {
+        toast.success('Profil mis à jour avec succès');
+        setProfile(prev => ({ ...prev, display_name: newDisplayName.trim(), bio: newBio.trim() }));
+        setShowEditModal(false);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Erreur lors de la mise à jour du profil');
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-20">
+        <div className="bg-gradient-to-r from-green-500 to-green-600 p-4">
+          <h1 className="text-2xl font-bold text-white">Profil</h1>
+        </div>
+        <div className="p-4">
+          <div className="text-center py-8">
+            <p className="text-gray-500">Chargement du profil...</p>
+          </div>
+        </div>
+        <BottomNavigation />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-green-500 to-green-600 px-4 py-6 relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate('/')}
+          className="absolute top-4 left-4 text-white hover:bg-white/20"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        
+        <div className="text-center">
+          <div className="relative inline-block mb-4">
+            <img
+              src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`}
+              alt="Profile"
+              className="w-24 h-24 rounded-full border-4 border-white mx-auto"
+            />
+            <Button
+              size="icon"
+              className="absolute bottom-0 right-0 w-8 h-8 bg-white text-gray-600 hover:bg-gray-100 rounded-full shadow-lg"
+              onClick={() => setShowEditModal(true)}
+            >
+              <Camera className="w-4 h-4" />
+            </Button>
+          </div>
+          
+          <div className="text-white">
+            <h1 className="text-2xl font-bold">{profile.display_name}</h1>
+            <p className="text-green-100">@{profile.username}</p>
+            {profile.badge && (
+              <Badge variant="secondary" className="mt-2 bg-white/20 text-white border-white/30">
+                {profile.badge}
+              </Badge>
+            )}
+            {profile.bio && (
+              <p className="text-green-100 mt-2 text-sm">{profile.bio}</p>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="flex justify-center space-x-8 mt-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-white">{userPosts.length}</div>
+              <div className="text-green-100 text-sm">Posts</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-white">{profile.followers_count}</div>
+              <div className="text-green-100 text-sm">Abonnés</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-white">{profile.following_count}</div>
+              <div className="text-green-100 text-sm">Abonnements</div>
+            </div>
+          </div>
+        </div>
+        
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate('/settings')}
+          className="absolute top-4 right-4 text-white hover:bg-white/20"
+        >
+          <Settings className="w-5 h-5" />
+        </Button>
+      </div>
+
+      {/* Tabs Section */}
+      <div className="p-4">
+        <Tabs defaultValue="activity" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="activity" className="data-[state=active]:bg-green-500 data-[state=active]:text-white">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Activité
+            </TabsTrigger>
+            <TabsTrigger value="favorites" className="data-[state=active]:bg-green-500 data-[state=active]:text-white">
+              <Heart className="w-4 h-4 mr-2" />
+              Favoris
+            </TabsTrigger>
+            <TabsTrigger value="followers" className="data-[state=active]:bg-green-500 data-[state=active]:text-white">
+              <Users className="w-4 h-4 mr-2" />
+              Abonnés
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="activity" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Mes Posts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {postsLoading ? (
+                  <p className="text-gray-500">Chargement des posts...</p>
+                ) : userPosts.length > 0 ? (
+                  <div className="space-y-4">
+                    {userPosts.map((post) => (
+                      <div key={post.id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            {post.sport && post.match_teams && (
+                              <div className="text-sm text-gray-600 mb-1">
+                                {post.sport} • {post.match_teams}
+                              </div>
+                            )}
+                            <p className="text-gray-800">{post.content}</p>
+                            {post.prediction_text && (
+                              <div className="mt-2 p-2 bg-green-50 rounded border-l-4 border-green-500">
+                                <p className="text-green-800 font-medium">{post.prediction_text}</p>
+                                <div className="flex items-center space-x-4 mt-1 text-sm text-green-600">
+                                  <span>Cote: {post.odds}</span>
+                                  <span>Confiance: {post.confidence}%</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {post.image_url && (
+                          <img
+                            src={post.image_url}
+                            alt="Post"
+                            className="mt-2 rounded-lg max-h-64 w-full object-cover"
+                          />
+                        )}
+                        
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span className="flex items-center">
+                              <Heart className="w-4 h-4 mr-1" />
+                              {post.likes}
+                            </span>
+                            <span className="flex items-center">
+                              <MessageCircle className="w-4 h-4 mr-1" />
+                              {post.comments}
+                            </span>
+                          </div>
+                          <span className="text-sm text-gray-500">
+                            {formatDate(post.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">Aucun post publié</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="favorites" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pronostics favoris</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-500">Aucun favori enregistré</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="followers" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Abonnés</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-500">Aucun abonné pour le moment</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+          <Card className="max-w-md w-full">
+            <CardHeader>
+              <CardTitle>Modifier le profil</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed" htmlFor="name">
+                  Nom d'affichage
+                </label>
+                <Input
+                  type="text"
+                  id="name"
+                  placeholder="Votre nom"
+                  value={newDisplayName}
+                  onChange={(e) => setNewDisplayName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed" htmlFor="bio">
+                  Bio
+                </label>
+                <Textarea
+                  id="bio"
+                  placeholder="Petite description de vous"
+                  value={newBio}
+                  onChange={(e) => setNewBio(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="ghost" onClick={() => setShowEditModal(false)}>
+                  Annuler
+                </Button>
+                <Button onClick={updateProfile}>
+                  Enregistrer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      
+      <BottomNavigation />
+    </div>
+  );
+};
+
+export default Profile;
